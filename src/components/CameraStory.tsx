@@ -13,7 +13,7 @@ type Key = [progress: number, rect: Rect];
  * Scroll-driven intro. The section is tall and its stage is sticky, so scroll position
  * becomes a 0→1 progress value that scrubs the whole story:
  *
- *   0.00–0.36  3D camera turns to face us, iris opens, we dolly through the lens
+ *   0.00–0.36  3D camera turns to face us, then we dolly into the lens glass
  *   0.36–0.52  viewfinder, 16:9 frame        (step 1: shoot)
  *   0.52–0.66  frame turns 9:16 and back      (step 2: both formats)
  *   0.66–0.84  frame becomes a monitor over an edit timeline (step 3: edit & VFX)
@@ -22,8 +22,6 @@ type Key = [progress: number, rect: Rect];
  * Everything is written straight to the DOM from a rAF so scrolling never re-renders React.
  */
 
-/** Iris opening at rest, as a fraction of the lens radius. */
-const IRIS_CLOSED = 0;
 const STEPS: [number, number][] = [
   [0.38, 0.52],
   [0.52, 0.66],
@@ -178,22 +176,20 @@ export function CameraStory({ story }: { story: Story }) {
       intro.style.opacity = String(1 - introOut);
       intro.style.transform = `translateY(${-introOut * 40}px)`;
 
-      // The 3D camera turns to face us, the iris opens, then we dolly through the lens.
-      const open = out(seg(p, 0.1, 0.26));
-      const aperture = lerp(IRIS_CLOSED, 1, open);
+      // The 3D camera turns to face us, then we dolly into the lens.
       const diag = Math.hypot(vw, vh);
       const turn = inOut(seg(p, 0, 0.16));
       const dolly = still ? 0 : seg(p, 0.18, 0.36) ** 1.4;
-      const lens =
-        scene3d && p < 0.4 ? scene3d.render({ turn, dolly, aperture, twist: (1 - open) * 0.6 }) : null;
+      const lens = scene3d && p < 0.4 ? scene3d.render({ turn, dolly }) : null;
 
-      // Footage is only visible through the iris hole until the hole covers the screen.
+      // Footage fades up inside the real glass as we close in, until the glass fills the screen.
+      const throughGlass = seg(p, 0.2, 0.32);
       if (still) {
         const show = seg(p, 0.2, 0.34);
         hud.style.clipPath = "none";
         hud.style.opacity = String(show);
         cam.style.opacity = String(1 - show);
-      } else if (p >= 0.4 || (lens && aperture * lens.r > diag)) {
+      } else if (p >= 0.4 || (lens && lens.r * 0.985 > diag)) {
         hud.style.clipPath = "none";
         hud.style.opacity = "1";
         cam.style.opacity = "0";
@@ -201,8 +197,8 @@ export function CameraStory({ story }: { story: Story }) {
         hud.style.clipPath = "circle(0)";
         cam.style.opacity = "1";
       } else {
-        hud.style.clipPath = `polygon(${lens.hole.map(([x, y]) => `${x}px ${y}px`).join(",")})`;
-        hud.style.opacity = "1";
+        hud.style.clipPath = `polygon(${lens.glass.map(([x, y]) => `${x}px ${y}px`).join(",")})`;
+        hud.style.opacity = String(throughGlass);
         cam.style.opacity = "1";
       }
 

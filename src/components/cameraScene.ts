@@ -8,20 +8,16 @@ export type Pose = {
   turn: number;
   /** 0 = whole camera in frame, 1 = through the lens. */
   dolly: number;
-  /** Iris opening as a fraction of the lens radius (0 = shut, 1 = wide open). */
-  aperture: number;
-  /** Iris rotation in radians; blades twist as they open. */
-  twist: number;
 };
 
-/** Where the lens and the iris hole land on screen, in CSS px. */
+/** Where the lens lands on screen, in CSS px. */
 export type LensOnScreen = {
   x: number;
   y: number;
   /** Projected radius of the front glass. */
   r: number;
-  /** Corners of the iris hole, in perspective. */
-  hole: [number, number][];
+  /** Outline of the front glass, in perspective. */
+  glass: [number, number][];
 };
 
 export type CameraScene = {
@@ -29,8 +25,6 @@ export type CameraScene = {
   resize(): void;
   dispose(): void;
 };
-
-export const BLADES = 7;
 
 // Model-space tuning, measured on /models/camera-web.glb (normalised so its longest side is 1).
 const MODEL = {
@@ -44,40 +38,7 @@ const MODEL = {
   floor: -0.222,
 };
 
-const SIDE = (2 * Math.PI) / BLADES;
-const HOLE_POINTS = BLADES * 12;
-
-/**
- * Radius of the iris hole at angle `phi`, for apothem `a`. Nearly shut it is a heptagon;
- * as it opens the straight sides bow out into a circle, like curved blades, and it never
- * grows past the glass radius `r`.
- */
-function holeRadius(phi: number, a: number, r: number) {
-  const d = ((((phi + SIDE / 2) % SIDE) + SIDE) % SIDE) - SIDE / 2;
-  const heptagon = a / Math.cos(d);
-  const round = Math.min(1, (a / r) ** 1.5 * 1.4);
-  return Math.min(heptagon + (a - heptagon) * round, r * 0.985);
-}
-
-/**
- * One iris blade: the slice of the lens disc outside the hole, across side `i` and a little
- * beyond so neighbours overlap. Seven of them leave exactly the hole described by holeRadius.
- */
-function bladeShape(r: number, a: number, i: number) {
-  const from = i * SIDE - SIDE / 2 - 0.12;
-  const to = i * SIDE + SIDE / 2 + 0.12;
-  const steps = 20;
-  const shape = new THREE.Shape();
-  for (let k = 0; k <= steps; k++) {
-    const phi = from + ((to - from) * k) / steps;
-    const rho = holeRadius(phi, a, r);
-    if (k === 0) shape.moveTo(Math.cos(phi) * rho, Math.sin(phi) * rho);
-    else shape.lineTo(Math.cos(phi) * rho, Math.sin(phi) * rho);
-  }
-  shape.absarc(0, 0, r, to, from, true);
-  shape.closePath();
-  return shape;
-}
+const GLASS_POINTS = 72;
 
 export async function createCameraScene(container: HTMLElement): Promise<CameraScene> {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -134,37 +95,10 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
   rig.add(inner);
   scene.add(rig);
 
-  // Iris, sitting just behind the front glass so it turns with the camera.
-  const iris = new THREE.Group();
-  iris.position.copy(MODEL.lens);
-  rig.add(iris);
-  const bladeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x151413,
-    metalness: 0.7,
-    roughness: 0.38,
-    side: THREE.DoubleSide,
-  });
-  const blades = Array.from({ length: BLADES }, (_, i) => {
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), bladeMaterial);
-    // Stagger depth so overlapping blades don't z-fight.
-    mesh.position.z = -i * 0.0012;
-    iris.add(mesh);
-    return mesh;
-  });
-  let lastAperture = -1;
-  const setIris = (aperture: number, twist: number) => {
-    iris.rotation.z = twist;
-    if (Math.abs(aperture - lastAperture) < 1e-4) return;
-    lastAperture = aperture;
-    // Keep a sliver of hole when shut so the blade shapes never collapse to a point.
-    const a = Math.max(aperture, 0.002) * MODEL.lensRadius;
-    blades.forEach((b, i) => {
-      b.visible = aperture < 0.999;
-      if (!b.visible) return;
-      b.geometry.dispose();
-      b.geometry = new THREE.ShapeGeometry(bladeShape(MODEL.lensRadius, a, i), 24);
-    });
-  };
+  // Anchor on the front glass, so its outline can be projected in perspective.
+  const glass = new THREE.Object3D();
+  glass.position.copy(MODEL.lens);
+  rig.add(glass);
 
   const tmp = new THREE.Vector3();
   const lensWorld = new THREE.Vector3();
@@ -189,13 +123,12 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
     return [(tmp.x * 0.5 + 0.5) * w, (-tmp.y * 0.5 + 0.5) * h];
   };
 
-  const render = ({ turn, dolly, aperture, twist }: Pose): LensOnScreen => {
+  const render = ({ turn, dolly }: Pose): LensOnScreen => {
     // Turn from a three-quarter view to facing the viewer.
     rig.rotation.set(0.28 * (1 - turn), -0.75 * (1 - turn), 0);
     rig.updateMatrixWorld(true);
     floor.copy(floorLocal).applyMatrix4(rig.matrixWorld);
-    setIris(aperture, twist);
-    iris.updateMatrixWorld(true);
+    glass.updateMatrixWorld(true);
 
     // Dolly straight at the lens. Distance falls exponentially so the push feels constant.
     lensWorld.copy(MODEL.lens).applyMatrix4(rig.matrixWorld);
@@ -215,15 +148,14 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
     renderer.render(scene, cam);
 
     const [x, y] = project(lensWorld);
-    const [ex, ey] = project(tmp.set(MODEL.lensRadius, 0, 0).applyMatrix4(iris.matrixWorld));
-    const a = aperture * MODEL.lensRadius;
-    const hole: [number, number][] = [];
-    for (let k = 0; k < HOLE_POINTS; k++) {
-      const phi = (k * 2 * Math.PI) / HOLE_POINTS;
-      const rho = holeRadius(phi, a, MODEL.lensRadius);
-      hole.push(project(tmp.set(Math.cos(phi) * rho, Math.sin(phi) * rho, 0).applyMatrix4(iris.matrixWorld)));
+    const [ex, ey] = project(tmp.set(MODEL.lensRadius, 0, 0).applyMatrix4(glass.matrixWorld));
+    const outline: [number, number][] = [];
+    for (let k = 0; k < GLASS_POINTS; k++) {
+      const phi = (k * 2 * Math.PI) / GLASS_POINTS;
+      const rho = MODEL.lensRadius * 0.985;
+      outline.push(project(tmp.set(Math.cos(phi) * rho, Math.sin(phi) * rho, 0).applyMatrix4(glass.matrixWorld)));
     }
-    return { x, y, r: Math.hypot(ex - x, ey - y), hole };
+    return { x, y, r: Math.hypot(ex - x, ey - y), glass: outline };
   };
 
   resize();
@@ -232,8 +164,6 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
     render,
     resize,
     dispose() {
-      for (const b of blades) b.geometry.dispose();
-      bladeMaterial.dispose();
       renderer.dispose();
       pmrem.dispose();
       renderer.domElement.remove();
