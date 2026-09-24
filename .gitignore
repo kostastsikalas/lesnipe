@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Source 3D model (62MB); the site uses the compressed camera-web.glb
+/public/models/camera.glb
