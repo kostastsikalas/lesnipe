@@ -23,7 +23,7 @@ type Key = [progress: number, rect: Rect];
  */
 
 /** Iris opening at rest, as a fraction of the lens radius. */
-const IRIS_CLOSED = 0.14;
+const IRIS_CLOSED = 0;
 const STEPS: [number, number][] = [
   [0.38, 0.52],
   [0.52, 0.66],

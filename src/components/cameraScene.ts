@@ -44,15 +44,37 @@ const MODEL = {
   floor: -0.222,
 };
 
+const SIDE = (2 * Math.PI) / BLADES;
+const HOLE_POINTS = BLADES * 12;
+
 /**
- * One iris blade: the slice of the lens disc beyond a chord at distance `a` from the centre,
- * facing direction `angle`. Seven of them leave a heptagon hole of apothem `a`.
+ * Radius of the iris hole at angle `phi`, for apothem `a`. Nearly shut it is a heptagon;
+ * as it opens the straight sides bow out into a circle, like curved blades, and it never
+ * grows past the glass radius `r`.
  */
-function bladeShape(r: number, a: number, angle: number) {
-  const half = Math.acos(Math.min(a / r, 1));
+function holeRadius(phi: number, a: number, r: number) {
+  const d = ((((phi + SIDE / 2) % SIDE) + SIDE) % SIDE) - SIDE / 2;
+  const heptagon = a / Math.cos(d);
+  const round = Math.min(1, (a / r) ** 1.5 * 1.4);
+  return Math.min(heptagon + (a - heptagon) * round, r * 0.985);
+}
+
+/**
+ * One iris blade: the slice of the lens disc outside the hole, across side `i` and a little
+ * beyond so neighbours overlap. Seven of them leave exactly the hole described by holeRadius.
+ */
+function bladeShape(r: number, a: number, i: number) {
+  const from = i * SIDE - SIDE / 2 - 0.12;
+  const to = i * SIDE + SIDE / 2 + 0.12;
+  const steps = 20;
   const shape = new THREE.Shape();
-  shape.moveTo(Math.cos(angle - half) * r, Math.sin(angle - half) * r);
-  shape.absarc(0, 0, r, angle - half, angle + half, false);
+  for (let k = 0; k <= steps; k++) {
+    const phi = from + ((to - from) * k) / steps;
+    const rho = holeRadius(phi, a, r);
+    if (k === 0) shape.moveTo(Math.cos(phi) * rho, Math.sin(phi) * rho);
+    else shape.lineTo(Math.cos(phi) * rho, Math.sin(phi) * rho);
+  }
+  shape.absarc(0, 0, r, to, from, true);
   shape.closePath();
   return shape;
 }
@@ -124,7 +146,7 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
   });
   const blades = Array.from({ length: BLADES }, (_, i) => {
     const mesh = new THREE.Mesh(new THREE.BufferGeometry(), bladeMaterial);
-    // Stagger depth and tilt a little so the overlapping blades catch light differently.
+    // Stagger depth so overlapping blades don't z-fight.
     mesh.position.z = -i * 0.0012;
     iris.add(mesh);
     return mesh;
@@ -134,13 +156,13 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
     iris.rotation.z = twist;
     if (Math.abs(aperture - lastAperture) < 1e-4) return;
     lastAperture = aperture;
-    const a = aperture * MODEL.lensRadius;
+    // Keep a sliver of hole when shut so the blade shapes never collapse to a point.
+    const a = Math.max(aperture, 0.002) * MODEL.lensRadius;
     blades.forEach((b, i) => {
       b.visible = aperture < 0.999;
       if (!b.visible) return;
       b.geometry.dispose();
-      b.geometry = new THREE.ShapeGeometry(bladeShape(MODEL.lensRadius, a, (i * 2 * Math.PI) / BLADES), 24);
-      b.rotation.set(Math.sin(i) * 0.04, Math.cos(i) * 0.04, 0);
+      b.geometry = new THREE.ShapeGeometry(bladeShape(MODEL.lensRadius, a, i), 24);
     });
   };
 
@@ -194,11 +216,12 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
 
     const [x, y] = project(lensWorld);
     const [ex, ey] = project(tmp.set(MODEL.lensRadius, 0, 0).applyMatrix4(iris.matrixWorld));
-    const R = (aperture * MODEL.lensRadius) / Math.cos(Math.PI / BLADES);
+    const a = aperture * MODEL.lensRadius;
     const hole: [number, number][] = [];
-    for (let i = 0; i < BLADES; i++) {
-      const phi = ((i + 0.5) * 2 * Math.PI) / BLADES;
-      hole.push(project(tmp.set(Math.cos(phi) * R, Math.sin(phi) * R, 0).applyMatrix4(iris.matrixWorld)));
+    for (let k = 0; k < HOLE_POINTS; k++) {
+      const phi = (k * 2 * Math.PI) / HOLE_POINTS;
+      const rho = holeRadius(phi, a, MODEL.lensRadius);
+      hole.push(project(tmp.set(Math.cos(phi) * rho, Math.sin(phi) * rho, 0).applyMatrix4(iris.matrixWorld)));
     }
     return { x, y, r: Math.hypot(ex - x, ey - y), hole };
   };
