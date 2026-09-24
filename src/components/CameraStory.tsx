@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef } from "react";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { Crosshair } from "./Header";
@@ -300,22 +301,30 @@ export function CameraStory({ story }: { story: Story }) {
         {/* Intro copy */}
         <div
           data-s="intro"
-          className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-[6svh] sm:px-8"
+          className="pointer-events-none absolute inset-0 mx-auto flex max-w-7xl flex-col justify-between px-4 pt-24 pb-[6svh] sm:px-8 wide:justify-center wide:pt-16"
         >
-          <p className="mb-5 flex items-center gap-2 font-mono text-xs uppercase text-dim">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-signal" />
-            {story.eyebrow}
-          </p>
-          <div className="flex items-end justify-between gap-6">
-            <h1 className="text-[clamp(2.5rem,7vw,6.5rem)] leading-[0.92] font-semibold tracking-[-0.04em]">
+          <Image
+            src="/logo.png"
+            alt="Le Snipe Visuals"
+            width={640}
+            height={554}
+            priority
+            className="h-auto w-[min(56vw,15rem)] wide:w-[min(34vw,30rem)]"
+          />
+          <div className="wide:mt-12 wide:max-w-[34vw]">
+            <p className="mb-5 flex items-center gap-2 font-mono text-xs uppercase text-dim">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-signal" />
+              {story.eyebrow}
+            </p>
+            <h1 className="text-[clamp(2.5rem,5vw,4.75rem)] leading-[0.92] font-semibold tracking-[-0.04em]">
               {story.title[0]}
               <br />
               <span className="text-signal">{story.title[1]}</span>
             </h1>
-            <p className="hidden shrink-0 items-center gap-2 font-mono text-xs uppercase text-dim sm:flex">
-              {story.scroll} <span aria-hidden className="animate-bounce">↓</span>
-            </p>
           </div>
+          <p className="absolute right-4 bottom-[6svh] hidden items-center gap-2 font-mono text-xs uppercase text-dim sm:right-8 sm:flex">
+            {story.scroll} <span aria-hidden className="animate-bounce">↓</span>
+          </p>
         </div>
 
         {/* Everything seen through the lens */}

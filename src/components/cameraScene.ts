@@ -104,9 +104,9 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
   const lensWorld = new THREE.Vector3();
   let w = 1;
   let h = 1;
-  const baseDistance = 2.6;
-  const restWide = new THREE.Vector3(-0.32, 0, 0);
-  const restTall = new THREE.Vector3(0, -0.12, 0);
+  // Resting framing: right of the logo on wide screens, between logo and title on narrow ones.
+  const restWide = { target: new THREE.Vector3(-0.55, 0, 0), distance: 3.6 };
+  const restTall = { target: new THREE.Vector3(0, 0.08, 0), distance: 3.4 };
 
   const resize = () => {
     w = container.clientWidth;
@@ -135,11 +135,10 @@ export async function createCameraScene(container: HTMLElement): Promise<CameraS
     const diag = Math.hypot(w, h);
     const focal = h / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const minDistance = (MODEL.lensRadius * focal) / (diag * 0.9);
-    const distance = baseDistance * (minDistance / baseDistance) ** dolly;
-    // Before the dolly, frame the whole body (right of the title on wide screens, above it on
-    // narrow ones); during it, aim the view at the lens.
+    // Before the dolly, frame the whole body; during it, aim the view at the lens.
     const rest = w >= 1024 && w > h ? restWide : restTall;
-    const target = rest.clone().lerp(lensWorld, dolly);
+    const distance = rest.distance * (minDistance / rest.distance) ** dolly;
+    const target = rest.target.clone().lerp(lensWorld, dolly);
     cam.position.set(target.x, target.y, lensWorld.z + distance);
     cam.lookAt(target);
     cam.near = Math.max(distance * 0.2, 0.0005);

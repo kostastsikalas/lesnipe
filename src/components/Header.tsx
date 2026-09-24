@@ -28,7 +28,8 @@ export function Header({ lang, nav }: Props) {
     { href: `/${lang}#contact`, label: nav.contact },
   ];
 
-  const switchTo = (target: Locale) => pathname.replace(/^\/(el|en)(?=\/|$)/, `/${target}`);
+  const isHome = /^\/(el|en)\/?$/.test(pathname);
+  const switchTo =(target: Locale) => pathname.replace(/^\/(el|en)(?=\/|$)/, `/${target}`);
 
   return (
     <header
@@ -38,8 +39,15 @@ export function Header({ lang, nav }: Props) {
           : "border-b border-transparent"
       }`}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-8">
-        <Link href={`/${lang}`} className="-my-1 block">
+      {/* Three columns so the nav sits in the true centre, whatever the logo and switch widths. */}
+      <div className="mx-auto grid h-16 max-w-7xl grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-8">
+        {/* On the homepage the intro shows the big logo, so this one waits until you scroll. */}
+        <Link
+          href={`/${lang}`}
+          className={`-my-1 block w-fit transition-opacity duration-300 ${
+            isHome && !scrolled && !open ? "pointer-events-none opacity-0" : "opacity-100"
+          }`}
+        >
           <Image src="/logo.png" alt="Le Snipe Visuals" width={640} height={554} priority className="h-12 w-auto" />
         </Link>
 
@@ -49,15 +57,18 @@ export function Header({ lang, nav }: Props) {
               {l.label}
             </a>
           ))}
-          <LangSwitch lang={lang} switchTo={switchTo} />
         </nav>
+
+        <div className="col-start-3 hidden justify-self-end md:block">
+          <LangSwitch lang={lang} switchTo={switchTo} />
+        </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-label="Menu"
-          className="-mr-2 flex h-10 w-10 items-center justify-center md:hidden"
+          className="col-start-3 -mr-2 flex h-10 w-10 items-center justify-center justify-self-end md:hidden"
         >
           <span className="relative block h-3 w-5">
             <span
